@@ -20,7 +20,15 @@
  * fake fetch.
  */
 
+import { formatAttachmentSize } from "./pending-attachments";
 import type { ImageContent, UserMessage } from "./types";
+
+/**
+ * Re-export the shared byte-count formatter so history-rendering code
+ * (and any future chip variant) does not grow a parallel implementation.
+ * Aliased name keeps the chip-specific call sites readable.
+ */
+export const formatChipSize = formatAttachmentSize;
 
 /**
  * Stored-name pattern: 16 lowercase hex chars (8 random bytes per
@@ -152,6 +160,14 @@ export function imageBlockToSrc(image: ImageContent): string {
   }
   return "";
 }
+
+/**
+ * Re-export the image-source helper under a chip-friendly name. Centralizes
+ * the data-URL decoding logic so `MessageView` does not grow a parallel
+ * copy. The two implementations were identical before the refactor; this
+ * keeps the chip call site readable while preventing future drift.
+ */
+export const attachmentImageSrc = imageBlockToSrc;
 
 /**
  * Pull image blocks out of a user message payload. Returns the blocks in

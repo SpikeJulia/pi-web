@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
-import { isAbsolute } from "path";
-import {
-  getAllowedFileRoots,
-  isFilePathAllowed,
-  isWindowsAbsolutePath,
-} from "@/lib/file-access";
+import { authorizeCwd } from "@/lib/file-access";
 import {
   ensurePiUploadsGitignore,
   validateFilePolicy,
@@ -33,27 +28,6 @@ interface PersistResult {
   bytes: Buffer;
   storedPath: string;
   sidecarPath: string;
-}
-
-/**
- * Authorize a project path against the allowed-roots whitelist. Returns a
- * NextResponse if the request must be rejected, or null when access is OK.
- */
-async function authorizeCwd(cwd: string): Promise<NextResponse | null> {
-  if (!cwd) {
-    return NextResponse.json({ error: "cwd is required" }, { status: 400 });
-  }
-  if (!isAbsolute(cwd) && !isWindowsAbsolutePath(cwd)) {
-    return NextResponse.json(
-      { error: "cwd must be an absolute path" },
-      { status: 400 },
-    );
-  }
-  const allowedRoots = await getAllowedFileRoots();
-  if (!isFilePathAllowed(cwd, allowedRoots)) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  }
-  return null;
 }
 
 /**
@@ -188,6 +162,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
     }
 
+    // Reject path traversal in the sessionId field. `getUploadDirectory`
+    // joins it with `<cwd>/.pi-uploads/` directly, so a value like
+    // `../../x` would write outside the per-session storage boundary. The
+    // cleanup route uses the same validator so the rules stay aligned.
+    const sessionIdError = validateAttachmentFileName(sessionId);
+    if (sessionIdError) {
+      return NextResponse.json(
+        {
+          error: `sessionId ${sessionIdError.replace(/^.*?: /, "must be valid: ")}`,
+        },
+        { status: 400 },
+      );
+    }
+
     const entries = form.getAll("file");
     const files = entries.filter((entry): entry is File => typeof entry !== "string");
     if (files.length === 0) {
@@ -210,9 +198,8 @@ export async function POST(req: Request) {
       if (validationError) {
         return NextResponse.json({ error: validationError }, { status: 400 });
       }
-      const mimeType = file.type || "application/octet-stream";
       const bytes = Buffer.from(await file.arrayBuffer());
-      const policy = validateFilePolicy(originalName, mimeType, bytes.length);
+      const policy = validateFilePolicy(originalName, bytes.length);
       if (!policy.ok) {
         return NextResponse.json({ error: policy.error }, { status: policy.status });
       }

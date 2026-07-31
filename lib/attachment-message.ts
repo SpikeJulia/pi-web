@@ -26,7 +26,8 @@
 // pairing is the caller's responsibility (the upload pipeline is the
 // only producer of these two arrays in lockstep).
 
-import { isImageFile, type PendingAttachment } from "./pending-attachments";
+import { isImageExtension } from "./file-upload-policy";
+import type { PendingAttachment } from "./pending-attachments";
 
 /**
  * Record returned by `POST /api/file-upload` for a single stored file.
@@ -91,13 +92,23 @@ export function composeAttachmentMessage(
   for (let i = 0; i < pending.length; i += 1) {
     const attachment = pending[i];
     const upload = uploads[i];
-    if (isImageFile(attachment.file)) {
+    // Channel decision is shared with the server (extension-based) but the
+    // server's view is authoritative when it disagrees with the client: if
+    // the upload record carries base64 `data` the file was processed through
+    // the image channel, regardless of how `file.type` classified it. This
+    // rescues `.png` files whose `file.type` was empty or `octet-stream` —
+    // they would otherwise be composed as `@path` and the model would never
+    // see the image.
+    const isImage = (typeof upload.data === "string" && upload.data.length > 0)
+      || isImageExtension(attachment.file.name);
+    if (isImage) {
       // Image-channel: base64 only, no path in text (ADR 0004).
       // An image record without base64 data is a server-side encoding
-      // failure — drop it rather than emit a half-formed block. The
-      // upload pipeline surfaces the underlying error before we get here
-      // in the common case (whole batch fails), so this branch only
-      // fires when the server returns a partial payload.
+      // failure or a record returned with a mismatched channel — drop it
+      // rather than emit a half-formed block. The upload pipeline surfaces
+      // the underlying error before we get here in the common case (whole
+      // batch fails), so this branch only fires when the server returns a
+      // partial payload.
       if (upload.data && upload.mimeType) {
         images.push({
           type: "image",

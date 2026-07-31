@@ -11,6 +11,7 @@ import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import {
   parseMessageAttachments,
   visibleMessageText,
+  formatChipSize,
   type ParsedAttachment,
 } from "@/lib/attachment-references";
 import {
@@ -1517,22 +1518,6 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
 // --- Attachment chips for history rendering ---------------------------------
 
 /**
- * Format a byte count the same way the rest of the UI does. Kept local to
- * this file (rather than importing from `pending-attachments.ts`) because
- * the sidecar metadata is read-only here and the pending-attachments
- * helper is geared toward user-facing input chips.
- */
-function formatChipSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 100) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  if (mb < 10) return `${mb.toFixed(1)} MB`;
-  return `${Math.round(mb)} MB`;
-}
-
-/**
  * Compose the absolute path for a file chip. Returns null when the chip
  * cannot be opened (missing cwd or session id); the chip still renders
  * with a stored-name fallback in that case.
@@ -1700,20 +1685,35 @@ export function FileChip({
   );
 }
 
-function ImageChip({
+export function ImageChip({
   attachment,
+  onOpenFile,
 }: {
   attachment: ParsedAttachment;
+  onOpenFile?: (filePath: string) => void;
 }) {
   const src = attachment.src ?? "";
   // Empty data URLs come from blocks that have no payload; render a quiet
   // placeholder so the chip strip stays a stable height.
   const renderable = src && !src.endsWith(",");
+  const openable = !!onOpenFile && !!src;
+  const handleClick = () => {
+    if (openable) onOpenFile!(src);
+  };
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!openable) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleClick();
+    }
+  };
   return (
     <button
       type="button"
-      disabled
-      title="Image preview"
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      disabled={!openable}
+      title={openable ? "Open image" : "Image preview unavailable"}
       data-attachment-key={attachment.key}
       data-attachment-kind="image"
       style={{
@@ -1727,9 +1727,18 @@ function ImageChip({
         border: "1px solid rgba(59,130,246,0.32)",
         borderRadius: 8,
         overflow: "hidden",
-        cursor: "default",
+        cursor: openable ? "pointer" : "default",
         position: "relative",
         flexShrink: 0,
+        transition: "border-color 0.12s",
+      }}
+      onMouseEnter={(e) => {
+        if (!openable) return;
+        e.currentTarget.style.borderColor = "rgba(59,130,246,0.55)";
+      }}
+      onMouseLeave={(e) => {
+        if (!openable) return;
+        e.currentTarget.style.borderColor = "rgba(59,130,246,0.32)";
       }}
     >
       {renderable ? (
@@ -1778,7 +1787,7 @@ function UserAttachmentStrip({
       }}
     >
       {attachments.map((chip) => {
-        if (chip.kind === "image") return <ImageChip key={chip.key} attachment={chip} />;
+        if (chip.kind === "image") return <ImageChip key={chip.key} attachment={chip} onOpenFile={onOpenFile} />;
         return (
           <FileChip
             key={chip.key}

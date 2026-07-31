@@ -12,7 +12,7 @@ import type {
 import { normalizeToolCalls } from "@/lib/normalize";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getToolNamesForPreset, type ToolEntry } from "@/lib/tool-presets";
-import { composeAttachmentMessage } from "@/lib/attachment-message";
+import { composeAttachmentMessage, type ComposedAttachmentMessage } from "@/lib/attachment-message";
 import { uploadAttachments } from "@/lib/attachment-upload";
 import type { PendingAttachment } from "@/lib/pending-attachments";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -1056,7 +1056,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // lines. The whole upload batch is all-or-nothing: any server-side
     // failure marks every chip in error and aborts the send (per ticket
     // 04), preserving both the user's text and the chips for retry.
-    let composed: { message: string; images: Array<{ type: "image"; data: string; mimeType: string }> } = {
+    let composed: ComposedAttachmentMessage = {
       message,
       images: [],
     };

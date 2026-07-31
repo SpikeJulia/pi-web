@@ -123,6 +123,64 @@ test("POST returns 403 when cwd is not in the allowed roots set", async (t) => {
   assert.deepEqual(await readJson(response), { error: "Access denied" });
 });
 
+// --- sessionId path-traversal guard (P0 review finding) ---
+
+test("POST rejects a sessionId that escapes .pi-uploads with 400 and writes nothing", async (t) => {
+  resetAllowedRoots();
+  const cwd = createProject(t);
+  allowFileRoot(cwd);
+  const request = makeUploadRequest({
+    cwd,
+    sessionId: "../../x",
+    files: [makeFile("contract.pdf", "application/pdf", [1, 2, 3])],
+  });
+  const response = await POST(request);
+  assert.equal(response.status, 400);
+  const body = await readJson(response);
+  assert.match(body.error, /sessionId/);
+  assert.match(body.error, /must be valid/);
+  // Nothing was written under .pi-uploads and the project root is clean.
+  assert.equal(existsSync(join(cwd, ".pi-uploads")), false);
+  assert.equal(existsSync(join(cwd, ".pi")), false);
+  // The traversal target must not exist either.
+  assert.equal(existsSync(join(cwd, "x")), false);
+});
+
+test("POST rejects a sessionId with a NUL byte with 400 and writes nothing", async (t) => {
+  resetAllowedRoots();
+  const cwd = createProject(t);
+  allowFileRoot(cwd);
+  const request = makeUploadRequest({
+    cwd,
+    sessionId: "evil\u0000id",
+    files: [makeFile("contract.pdf", "application/pdf", [1, 2, 3])],
+  });
+  const response = await POST(request);
+  assert.equal(response.status, 400);
+  const body = await readJson(response);
+  assert.match(body.error, /sessionId/);
+  assert.equal(existsSync(join(cwd, ".pi-uploads")), false);
+});
+
+test("POST rejects a sessionId with embedded path separators with 400", async (t) => {
+  resetAllowedRoots();
+  const cwd = createProject(t);
+  allowFileRoot(cwd);
+  for (const bad of ["folder/inner", "folder\\inner", "."]) {
+    const request = makeUploadRequest({
+      cwd,
+      sessionId: bad,
+      files: [makeFile("contract.pdf", "application/pdf", [1, 2, 3])],
+    });
+    const response = await POST(request);
+    assert.equal(response.status, 400, `expected reject for sessionId=${JSON.stringify(bad)}`);
+    const body = await readJson(response);
+    assert.match(body.error, /sessionId/);
+  }
+  // Nothing was written for any of the rejected inputs.
+  assert.equal(existsSync(join(cwd, ".pi-uploads")), false);
+});
+
 // --- success: file lands at .pi-uploads/<sessionId>/<random-hex><.ext> ---
 
 test("POST persists a single file with random hex name and writes a sidecar", async (t) => {

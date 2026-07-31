@@ -2,7 +2,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
-import { clearDraft, getDraft, setDraft } from "@/lib/draft-store";
+import { clearDraft, getDraft, setDraft, serializeChatDraftImages, chatDraftImageToFile, type ChatDraftImage } from "@/lib/draft-store";
 import {
   buildEntriesFromFiles, buildAtInsertText, extractAtQuery, filterFileEntries,
   type AtQueryMatch, type FileIndexEntry,
@@ -12,7 +12,6 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   addPendingAttachments,
   formatAttachmentSize,
-  isImageFile,
   MAX_ATTACHMENTS_PER_MESSAGE,
   revokePendingAttachment,
   type PendingAttachment,
@@ -83,6 +82,21 @@ export interface ChatInputHandle {
    *  came from. Marks them `status: "error"` with `error: <message>` so
    *  the chip strip recolors and the tooltip shows the cause. */
   markAttachmentError: (ids: string[], message: string) => void;
+}
+
+function restoreDraftImages(images: ChatDraftImage[]): PendingAttachment[] {
+  return images.map((image) => {
+    const file = chatDraftImageToFile(image);
+    return {
+      id: `draft-${Math.random().toString(36).slice(2, 10)}`,
+      file,
+      // Re-derive the data: URL preview from the restored File. The
+      // upload pipeline only streams the file on send; the preview is
+      // a local UI affordance and never leaves the browser.
+      previewUrl: `data:${image.mimeType};base64,${image.data}`,
+      status: "ready",
+    };
+  });
 }
 
 const TOOL_PRESETS = ["off", "default", "full"] as const;
@@ -208,21 +222,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
   // Pending attachments — the single source of truth for the chip strip
-  // and the upload pipeline (tickets 02 + 04). Image drafts from an old
-  // draft-store are restored here as ready chips with a synthesized fake
-  // File payload; that is enough for rendering and for the "chip with
-  // thumbnail" test. Runtime-added non-image attachments stay in this
-  // list too — the previous `attachedImages` mirror has been removed.
-  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>(() => (
-    draftKey
-      ? getDraft(draftKey)?.images.map((img) => ({
-          id: `draft-${Math.random().toString(36).slice(2, 10)}`,
-          file: { name: img.mimeType, type: img.mimeType } as unknown as File,
-          previewUrl: `data:${img.mimeType};base64,${img.data}`,
-          status: "ready",
-        })) ?? []
-      : []
-  ));
+  // and the upload pipeline (tickets 02 + 04). Draft image drafts are
+  // restored here as ready chips with real `File` payloads so the
+  // upload pipeline can stream the bytes on send (and so the original
+  // filename survives a page reload). Path-channel drafts are not
+  // persisted by design — only image attachments round-trip through
+  // the draft store today.
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>(() => {
+    if (!draftKey) return [];
+    const images = getDraft(draftKey)?.images ?? [];
+    return restoreDraftImages(images);
+  });
+  // The lazy initializer can only read the initial draft once. When
+  // `draftKey` later changes, we re-hydrate `pendingAttachments` from
+  // the new draft's images array. Without this effect a draft-key
+  // switch leaves the old session's chips on screen (the next state
+  // change would overwrite the local `pendingAttachments`, but in the
+  // meantime the user could send the wrong files).
+  useEffect(() => {
+    setPendingAttachments(draftKey ? restoreDraftImages(getDraft(draftKey)?.images ?? []) : []);
+    // Only re-hydrate when the draft key changes; the next effect handles
+    // subsequent user additions and removals.
+  }, [draftKey]);
   // Inline error banner above the chips. Cleared as soon as the user takes
   // another attachment action so the message never lingers.
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -352,17 +373,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (isStreaming) return;
     if (!files.length) return;
 
-    const result = addPendingAttachments([], files);
-    if (result.rejected > 0 && result.rejectedReason) {
-      showAttachmentError(result.rejectedReason);
-    }
-    if (!result.pending.length) return;
-
+    // Compute the per-message cap inside the state updater so it is
+    // enforced against the *current* `prev`. Calling `addPendingAttachments`
+    // against an empty list — and then concatenating onto `prev` — let two
+    // batches of 6 produce 12 chips because each batch saw the cap as
+    // untouched. The updater may run twice in StrictMode; queueing the
+    // rejection toast via microtask avoids "setState during render"
+    // warnings and is idempotent for the same (prev, files) pair.
     setPendingAttachments((prev) => {
-      // `addPendingAttachments` against an empty list already produced the
-      // accepted entries in `result.pending`; concat them onto `prev` so the
-      // cap is enforced exactly once across multiple calls.
-      return [...prev, ...result.pending];
+      const result = addPendingAttachments(prev, files);
+      if (result.rejected > 0 && result.rejectedReason) {
+        queueMicrotask(() => showAttachmentError(result.rejectedReason!));
+      }
+      return result.pending;
     });
   }, [isStreaming, showAttachmentError]);
 
@@ -393,41 +416,50 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     }
   }, [clearImages, draftKey]);
 
+  // Ref mirror for the draft-key switch effect — it must read the
+  // current pending attachments at switch time, not the stale closure
+  // value.
+  const pendingAttachmentsRef = useRef(pendingAttachments);
+  pendingAttachmentsRef.current = pendingAttachments;
+
   useEffect(() => {
     if (!draftKey || draftKeyRef.current !== draftKey) return;
-    // Only the text portion round-trips through drafts; runtime-attached
-    // image drafts persist only via the legacy `attachedImages` round-trip
-    // that this ticket intentionally drops. Restoring from drafts still
-    // works because `pendingAttachments` lazy-inits from the draft's
-    // `images` array (synthesizing a fake File from the stored base64).
-    setDraft(draftKey, {
-      value,
-      images: [],
-    });
-  }, [draftKey, value]);
+    // Mirror the runtime pending attachments into the draft so image
+    // chips survive a page reload. The persistence path uses
+    // `serializeChatDraftImages` to read the underlying File bytes via
+    // `arrayBuffer()`; this keeps the same code path for freshly added
+    // images and any future attachment sources.
+    let cancelled = false;
+    void (async () => {
+      const images = await serializeChatDraftImages(pendingAttachments);
+      if (cancelled) return;
+      setDraft(draftKey, { value, images });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [draftKey, value, pendingAttachments]);
 
   useEffect(() => {
     const previousDraftKey = draftKeyRef.current;
     if (previousDraftKey === draftKey) return;
 
     if (previousDraftKey) {
-      setDraft(previousDraftKey, {
-        value: valueRef.current,
-        images: [],
-      });
+      // Flush the previous session's pending attachments into the
+      // outgoing draft so the user's image chips survive the switch.
+      void (async () => {
+        const images = await serializeChatDraftImages(pendingAttachmentsRef.current);
+        setDraft(previousDraftKey, { value: valueRef.current, images });
+      })();
     }
 
     const draft = draftKey ? getDraft(draftKey) : null;
     draftKeyRef.current = draftKey;
     setValue(draft?.value ?? "");
     setAtQuery(null);
-    // pendingAttachments is already lazy-initialised from `getDraft(draftKey)`
-    // above; on draft-key change the state survives only because React's
-    // component remount normally would lose it, but the same chip list is
-    // recovered because we re-render with the same `pendingAttachments`
-    // until the next state change overwrites it. Simplest path here is to
-    // leave `pendingAttachments` alone and let the lazy init handle the
-    // first render of the new draftKey on mount.
+    // `pendingAttachments` is re-hydrated by the dedicated effect that
+    // watches `draftKey`; doing it here would race with that effect
+    // because both run on the same dependency change.
   }, [draftKey]);
 
   useEffect(() => {
@@ -1116,7 +1148,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             )}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {pendingAttachments.map((att) => {
-                const isImg = isImageFile(att.file);
+                // The channel decision lives in `isImageFile` (extension-based,
+                // matching the server) and drives how `composeAttachmentMessage`
+                // routes an attachment on send. Chip rendering is a UI signal —
+                // "does this chip have image data to display?" — and the
+                // authoritative answer is `previewUrl` presence. Real image
+                // files get a `blob:` URL via `createPendingAttachment`;
+                // draft-restored images get a `data:` URL via the draft
+                // restoration path. Path-channel files get "".
+                const isImg = !!att.previewUrl;
                 const errorBorder = att.status === "error" ? "rgba(239,68,68,0.55)" : "var(--border)";
                 const errorBg = att.status === "error" ? "rgba(239,68,68,0.08)" : "var(--bg-panel)";
                 return (

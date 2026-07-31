@@ -1,9 +1,33 @@
+import { NextResponse } from "next/server";
 import { readdirSync } from "fs";
 import { homedir } from "os";
-import path from "path";
+import path, { isAbsolute } from "path";
 import { getAdditionalAllowedRoots, normalizeSlashes } from "./allowed-roots";
 import { listAllSessions } from "./session-reader";
 export { allowFileRoot, normalizeSlashes } from "./allowed-roots";
+
+/**
+ * Server-side authorization gate for absolute `cwd` inputs (file upload,
+ * cleanup, avatars, file index, ...). Returns a 400 / 403 NextResponse when
+ * the request must be rejected, or `null` when the cwd is allowed. Kept
+ * here so the file-upload and cleanup routes share identical semantics.
+ */
+export async function authorizeCwd(cwd: string): Promise<NextResponse | null> {
+  if (!cwd) {
+    return NextResponse.json({ error: "cwd is required" }, { status: 400 });
+  }
+  if (!isAbsolute(cwd) && !isWindowsAbsolutePath(cwd)) {
+    return NextResponse.json(
+      { error: "cwd must be an absolute path" },
+      { status: 400 },
+    );
+  }
+  const allowedRoots = await getAllowedFileRoots();
+  if (!isFilePathAllowed(cwd, allowedRoots)) {
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  }
+  return null;
+}
 
 // Short-TTL cache for the allowed-roots set. Without this, every file list/read
 // request re-scans every pi session on disk just to check access. 5s is short

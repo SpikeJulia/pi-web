@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { existsSync, readdirSync, rmSync } from "fs";
-import { isAbsolute, join } from "path";
-import {
-  getAllowedFileRoots,
-  isFilePathAllowed,
-  isWindowsAbsolutePath,
-} from "@/lib/file-access";
+import { join } from "path";
+import { authorizeCwd } from "@/lib/file-access";
 import { validateAttachmentFileName } from "@/lib/file-upload-storage";
 
 export const dynamic = "force-dynamic";
@@ -30,23 +26,6 @@ interface CleanupSuccessBody {
 }
 
 const PROJECT_UPLOAD_DIR = ".pi-uploads";
-
-async function authorizeCwd(cwd: string): Promise<NextResponse | null> {
-  if (!cwd) {
-    return NextResponse.json({ error: "cwd is required" }, { status: 400 });
-  }
-  if (!isAbsolute(cwd) && !isWindowsAbsolutePath(cwd)) {
-    return NextResponse.json(
-      { error: "cwd must be an absolute path" },
-      { status: 400 },
-    );
-  }
-  const allowedRoots = await getAllowedFileRoots();
-  if (!isFilePathAllowed(cwd, allowedRoots)) {
-    return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  }
-  return null;
-}
 
 /**
  * Recursively count every entry (file or directory) reachable from `dir`.

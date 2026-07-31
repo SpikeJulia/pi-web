@@ -41,7 +41,7 @@ export interface SidecarMetadata {
  */
 export type SidecarFetcher = (
   url: string,
-) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
 
 /**
  * Compose the URL the fetcher will call. Exposed so tests can assert the
@@ -106,14 +106,13 @@ export async function fetchSidecarMeta(
  */
 export async function defaultSidecarFetcher(
   url: string,
-): Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }> {
+): Promise<{ ok: boolean; json: () => Promise<unknown> }> {
   if (typeof fetch !== "function") {
     throw new Error("fetch is not available in this environment");
   }
   const response = await fetch(url);
   return {
     ok: response.ok,
-    status: response.status,
     json: () => response.json().catch(() => null),
   };
 }
@@ -125,24 +124,44 @@ export async function defaultSidecarFetcher(
  *
  * The cache stores `Promise<SidecarMetadata | null>` so concurrent
  * callers share one in-flight request instead of stampeding the API.
+ *
+ * When the entry count grows past `maxEntries` the least-recently-used
+ * entry is evicted on the next `resolve` call. The cap defaults to a
+ * generous 500 entries — enough for several long sessions without the
+ * cache becoming a memory leak.
  */
+const DEFAULT_SIDECAR_CACHE_CAP = 500;
+
 export class SidecarMetaCache {
   private readonly store = new Map<string, Promise<SidecarMetadata | null>>();
   private readonly fetcher: SidecarFetcher;
+  private readonly maxEntries: number;
 
-  constructor(fetcher: SidecarFetcher = defaultSidecarFetcher) {
+  constructor(fetcher: SidecarFetcher = defaultSidecarFetcher, maxEntries: number = DEFAULT_SIDECAR_CACHE_CAP) {
     this.fetcher = fetcher;
+    this.maxEntries = Math.max(1, maxEntries);
   }
 
   /**
    * Resolve the sidecar for a given `(cwd, sessionId, storedName)` triple.
    * Identical keys return the same in-flight or settled promise, so two
-   * chips for the same file resolve once.
+   * chips for the same file resolve once. A `resolve` call also marks
+   * the key as most-recently-used so a fresh hit can push the LRU toward
+   * the back of the eviction queue.
    */
   resolve(cwd: string, sessionId: string, storedName: string): Promise<SidecarMetadata | null> {
     const key = `${cwd}::${sessionId}::${storedName}`;
     const existing = this.store.get(key);
-    if (existing) return existing;
+    if (existing) {
+      // Re-insert at the tail to mark the key as fresh.
+      this.store.delete(key);
+      this.store.set(key, existing);
+      return existing;
+    }
+    if (this.store.size >= this.maxEntries) {
+      const oldestKey = this.store.keys().next().value;
+      if (oldestKey) this.store.delete(oldestKey);
+    }
     const next = fetchSidecarMeta(cwd, sessionId, storedName, this.fetcher).catch(() => null);
     this.store.set(key, next);
     return next;
@@ -173,9 +192,8 @@ export function getStoredFileAbsolutePath(cwd: string, sessionId: string, stored
 
 /**
  * Compose the human-friendly fallback label used when the sidecar is
- * missing. Mirrors the displayed stored name (the random hex plus the
- * extension the server saw) so the chip is still identifiable.
+ * missing. Pass-through today, but kept as a named export so call sites
+ * stay explicit about *why* the chip is showing the stored name (i.e.
+ * the sidecar is missing) rather than the original name.
  */
-export function getFallbackDisplayName(storedName: string): string {
-  return storedName;
-}
+export const getFallbackDisplayName = (storedName: string): string => storedName;

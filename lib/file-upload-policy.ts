@@ -51,44 +51,16 @@ const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Permissive allowlist for path-channel attachments. This is *not* an
- * exhaustive blocklist — unknown-but-harmless extensions also flow through
- * the path channel; only `EXECUTABLE_EXTENSIONS` are rejected outright.
- *
- * The allowlist is documentation-only here: any non-image, non-executable
- * extension is routed to the path channel. The set is referenced by the
- * unit tests so this comment stays in sync with the tested allowlist.
+ * True when `fileName`'s extension routes to the image channel. The
+ * extension is the authoritative channel signal (browser MIME sniffing is
+ * unreliable across platforms), so this helper is also re-exported to the
+ * client so its channel decision matches the server's without duplicating
+ * the extension list in two places.
  */
-const PATH_EXTENSIONS: ReadonlySet<string> = new Set([
-  // office / documents
-  "pdf",
-  "docx",
-  "xlsx",
-  "pptx",
-  "csv",
-  "txt",
-  "md",
-  // archives
-  "zip",
-  "tar",
-  "gz",
-  "7z",
-  // audio
-  "mp3",
-  "wav",
-  "ogg",
-  "m4a",
-  "flac",
-  // video
-  "mp4",
-  "webm",
-  "mov",
-]);
-
-// Keep the allowlist reachable from the module's surface so the spec
-// checklist and the unit tests stay honest about which extensions are
-// expected to flow through the path channel.
-void PATH_EXTENSIONS;
+export function isImageExtension(fileName: string | undefined | null): boolean {
+  if (!fileName) return false;
+  return IMAGE_EXTENSIONS.has(getExtension(fileName));
+}
 
 /**
  * Extensions blocked at the upload entry point so it cannot be used to
@@ -145,15 +117,8 @@ export function getExtension(fileName: string): string {
  */
 export function validateFilePolicy(
   originalName: string,
-  mimeType: string,
   bytesLength: number,
 ): PolicyResult {
-  // `mimeType` is part of the signature so future revisions can layer in
-  // MIME-based signals (e.g. sniff `application/x-msdownload`). Today the
-  // extension is authoritative, but accepting the field keeps callers from
-  // dropping information at the call site.
-  void mimeType;
-
   const extension = getExtension(originalName);
 
   if (extension && EXECUTABLE_EXTENSIONS.has(extension)) {

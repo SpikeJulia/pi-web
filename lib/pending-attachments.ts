@@ -6,6 +6,8 @@
 // list. It must stay DOM-only at the edges (preview URLs, file MIME checks)
 // but pure everywhere else so it can be tested without a browser.
 
+import { isImageExtension } from "./file-upload-policy";
+
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
 export interface PendingAttachment {
@@ -30,13 +32,17 @@ export interface AddFilesResult {
 }
 
 /**
- * Decide whether a file is "image-like". We mirror the rule used by the
- * existing picker/drop/paste paths: any MIME starting with `image/`. Files
- * without a MIME type fall through to non-image (treated as path-channel
- * attachments). Centralized so every entry point stays consistent.
+ * Decide whether a file is "image-like". The channel decision must match
+ * the server's `validateFilePolicy` (`lib/file-upload-policy.ts`), which
+ * uses the extension as the authoritative signal because browser
+ * uploaders often omit or mis-report `file.type` (a Windows file manager
+ * drag of `shot.png` may produce `application/octet-stream`, and a paste
+ * from the clipboard may produce an empty string). Sharing the helper
+ * keeps client + server on the same extension list without duplicating
+ * the set.
  */
 export function isImageFile(file: File): boolean {
-  return typeof file.type === "string" && file.type.startsWith("image/");
+  return isImageExtension(file.name);
 }
 
 /**

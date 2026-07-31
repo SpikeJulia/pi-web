@@ -8,7 +8,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MessageView } = await jiti.import("./MessageView.tsx");
+const { MessageView, ImageChip } = await jiti.import("./MessageView.tsx");
 
 function renderMessage(props) {
   return renderToStaticMarkup(React.createElement(MessageView, props));
@@ -35,6 +35,20 @@ test("user message with image attachment renders a thumbnail chip", () => {
   assert.match(html, /data-attachment-kind="image"/);
   // The thumbnail is rendered as an <img> with the base64 data URL.
   assert.match(html, /<img[^>]+src="data:image\/png;base64,AAAA"/);
+});
+
+test("image chips invoke the existing file-preview callback with their source", () => {
+  const attachment = {
+    key: "img:4:AAAA",
+    kind: "image",
+    src: "data:image/png;base64,AAAA",
+  };
+  let opened = null;
+  const element = ImageChip({ attachment, onOpenFile: (source) => { opened = source; } });
+
+  assert.equal(element.props.disabled, false);
+  element.props.onClick();
+  assert.equal(opened, attachment.src);
 });
 
 test("user message with multiple image attachments renders one chip per image", () => {

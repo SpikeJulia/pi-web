@@ -20,6 +20,30 @@ type Status =
   | { kind: "error"; scope: "session" | "project"; message: string };
 
 type ProjectConfirmStep = "idle" | "confirming-path" | "ready-to-run";
+type SessionConfirmStep = "idle" | "ready-to-run";
+type CleanupStep = SessionConfirmStep | ProjectConfirmStep;
+
+/**
+ * Pure, testable confirmation ladder used by the inline cleanup cards.
+ * Exported for unit tests so the ladder rules can be pinned without
+ * rendering the full modal. Returns the next step for a click on the
+ * action button. The `execute` terminal state is reported when the
+ * caller must actually run the cleanup.
+ */
+export function advanceCleanupConfirmation(
+  flow: "single" | "double",
+  current: CleanupStep,
+): CleanupStep | "execute" {
+  if (flow === "single") {
+    // Single-flow: one explicit confirmation before execution. The first
+    // click arms the button ("Confirm?"), the second runs the action.
+    if (current === "idle") return "ready-to-run";
+    return "execute";
+  }
+  if (current === "idle") return "confirming-path";
+  if (current === "confirming-path") return "ready-to-run";
+  return "execute";
+}
 
 function shortenPath(p: string): string {
   return p
@@ -62,18 +86,30 @@ function CleanupActionCard({
   onConfirm,
 }: CleanupActionCardProps) {
   const [projectStep, setProjectStep] = useState<ProjectConfirmStep>("idle");
+  const [sessionStep, setSessionStep] = useState<SessionConfirmStep>("idle");
 
-  // Reset the double-confirmation ladder when the parent disables the action
+  // Reset the confirmation ladder when the parent disables the action
   // (e.g. when scope changes after a fork, or the user closes the modal).
   useEffect(() => {
     if (disabled && projectStep !== "idle") setProjectStep("idle");
-  }, [disabled, projectStep]);
+    if (disabled && sessionStep !== "idle") setSessionStep("idle");
+  }, [disabled, projectStep, sessionStep]);
 
   const showProjectConfirm = flow === "double" && projectStep === "confirming-path";
+  const showSessionConfirm = flow === "single" && sessionStep === "ready-to-run";
 
   const handleClick = () => {
     if (disabled) return;
     if (flow === "single") {
+      // Spec ticket 06: session-scope deletion requires one explicit
+      // confirmation. First click arms the button, second click executes
+      // the deletion. The local `sessionStep` state carries the "armed"
+      // flag so the second click knows it is the live action.
+      if (sessionStep === "idle") {
+        setSessionStep("ready-to-run");
+        return;
+      }
+      setSessionStep("idle");
       onConfirm();
       return;
     }
@@ -85,19 +121,22 @@ function CleanupActionCard({
       setProjectStep("ready-to-run");
       return;
     }
+    setProjectStep("idle");
     onConfirm();
   };
 
   const buttonText = (() => {
     if (working) return "Working…";
-    if (flow === "single") return buttonLabel;
+    if (flow === "single") {
+      return sessionStep === "ready-to-run" ? "Confirm clear session" : buttonLabel;
+    }
     if (projectStep === "idle") return "Clear project attachments";
     if (projectStep === "confirming-path") return "I understand — continue";
     return "Delete everything now";
   })();
 
   const buttonActionStyle: "primary" | "danger" = (() => {
-    if (flow === "single") return "primary";
+    if (flow === "single") return sessionStep === "ready-to-run" ? "danger" : "primary";
     if (projectStep === "ready-to-run") return "danger";
     return "primary";
   })();
@@ -178,6 +217,26 @@ function CleanupActionCard({
           <code style={{ fontFamily: "var(--font-mono)" }}>{affectedPath}</code>{" "}
           for every session in this project. History messages are not rewritten
           — references will simply resolve to nothing.
+        </div>
+      )}
+
+      {showSessionConfirm && (
+        <div
+          role="alert"
+          data-attachments-confirm="session"
+          style={{
+            padding: "8px 10px",
+            border: "1px solid rgba(220, 38, 38, 0.35)",
+            borderRadius: 6,
+            background: "rgba(220, 38, 38, 0.08)",
+            color: "#dc2626",
+            fontSize: 12,
+            lineHeight: 1.55,
+          }}
+        >
+          Click <strong>Confirm clear session</strong> to delete the per-session
+          directory at <code style={{ fontFamily: "var(--font-mono)" }}>{affectedPath}</code>.
+          Chat history is not rewritten — references will resolve to nothing.
         </div>
       )}
 
