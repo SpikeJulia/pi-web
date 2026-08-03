@@ -16,6 +16,7 @@ import { composeAttachmentMessage, type ComposedAttachmentMessage } from "@/lib/
 import { uploadAttachments } from "@/lib/attachment-upload";
 import type { PendingAttachment } from "@/lib/pending-attachments";
 import type { SessionStatsInfo } from "@/lib/pi-types";
+import { getScrollTopForContentBottom, shouldRestoreBottomOnPageReturn } from "@/lib/chat-scroll";
 
 export interface SessionData {
   sessionId: string;
@@ -380,7 +381,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const executeBashRef = useRef<(command: string, excludeFromContext: boolean) => Promise<void> | undefined>(undefined);
   const userScrollIntentUntilRef = useRef(0);
   const ignoreProgrammaticScrollUntilRef = useRef(0);
+  const pageWasHiddenRef = useRef(false);
+  const pageReturnScrollRafRef = useRef<number | null>(null);
+  const pageReturnScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const latestMessageEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
   const newSessionPromotedRef = useRef(false);
@@ -1527,6 +1532,69 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     messagesEndRef.current?.scrollIntoView({ behavior });
   }, []);
 
+  const capturePageHideScrollState = useCallback(() => {
+    pageWasHiddenRef.current = true;
+  }, []);
+
+  const confirmAgentStillRunningForPageReturn = useCallback(async () => {
+    if (!agentRunningRef.current) return false;
+    const sid = sessionIdRef.current;
+    if (!sid) return false;
+    try {
+      const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
+      if (!res.ok) return false;
+      const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
+      const state = data.state;
+      return Boolean(data.running && state && (state.isStreaming || state.isPromptRunning || state.isCompacting));
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const restoreBottomAfterPageReturn = useCallback(async () => {
+    const pageWasHidden = pageWasHiddenRef.current;
+    pageWasHiddenRef.current = false;
+    const agentRunningNow = pageWasHidden ? await confirmAgentStillRunningForPageReturn() : false;
+    const shouldRestore = shouldRestoreBottomOnPageReturn({
+      hasMessages: messages.length > 0,
+      pageWasHidden,
+      agentRunningNow,
+    });
+    if (!shouldRestore) return;
+
+    const scrollNow = () => {
+      const container = scrollContainerRef.current;
+      const marker = latestMessageEndRef.current;
+      if (!container || !marker) {
+        scrollToBottom("instant");
+        return;
+      }
+      ignoreProgrammaticScrollUntilRef.current = Date.now() + PROGRAMMATIC_SCROLL_IGNORE_MS;
+      const containerRect = container.getBoundingClientRect();
+      const markerRect = marker.getBoundingClientRect();
+      container.scrollTo({
+        top: getScrollTopForContentBottom({
+          containerScrollTop: container.scrollTop,
+          containerTop: containerRect.top,
+          containerClientHeight: container.clientHeight,
+          markerTop: markerRect.top,
+        }),
+        behavior: "instant",
+      });
+    };
+    scrollNow();
+    if (pageReturnScrollRafRef.current !== null) cancelAnimationFrame(pageReturnScrollRafRef.current);
+    if (pageReturnScrollTimerRef.current !== null) clearTimeout(pageReturnScrollTimerRef.current);
+    pageReturnScrollRafRef.current = requestAnimationFrame(() => {
+      pageReturnScrollRafRef.current = null;
+      scrollNow();
+    });
+    pageReturnScrollTimerRef.current = setTimeout(() => {
+      pageReturnScrollTimerRef.current = null;
+      scrollNow();
+    }, 80);
+  }, [confirmAgentStillRunningForPageReturn, messages.length, scrollToBottom]);
+
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;
     const el = lastUserMsgRef.current;
@@ -1625,6 +1693,31 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [messages.length, loading, handleScrollPositionChange, markUserScrollIntent]);
 
   useEffect(() => {
+    const handlePageReturn = () => {
+      void restoreBottomAfterPageReturn();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        capturePageHideScrollState();
+        return;
+      }
+      if (document.visibilityState === "visible") handlePageReturn();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", capturePageHideScrollState);
+    window.addEventListener("pageshow", handlePageReturn);
+    window.addEventListener("focus", handlePageReturn);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", capturePageHideScrollState);
+      window.removeEventListener("pageshow", handlePageReturn);
+      window.removeEventListener("focus", handlePageReturn);
+      if (pageReturnScrollRafRef.current !== null) cancelAnimationFrame(pageReturnScrollRafRef.current);
+      if (pageReturnScrollTimerRef.current !== null) clearTimeout(pageReturnScrollTimerRef.current);
+    };
+  }, [capturePageHideScrollState, restoreBottomAfterPageReturn]);
+
+  useEffect(() => {
     if (messages.length > 0) {
       if (pendingScrollToUserRef.current) {
         pendingScrollToUserRef.current = false;
@@ -1694,7 +1787,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentPhase,
     isNew,
     // Refs
-    sessionIdRef, eventSourceRef, messagesEndRef, scrollContainerRef,
+    sessionIdRef, eventSourceRef, messagesEndRef, latestMessageEndRef, scrollContainerRef,
     lastUserMsgRef, pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
     handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
