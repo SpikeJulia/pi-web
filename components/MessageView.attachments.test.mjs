@@ -70,7 +70,7 @@ test("user message with multiple image attachments renders one chip per image", 
 
 // --- path-channel chips (degraded sidecar state) ---
 
-test("user message with path reference renders a file chip", () => {
+test("user message with path reference renders a file chip without exposing the stored name", () => {
   const html = renderMessage({
     message: {
       role: "user",
@@ -85,9 +85,10 @@ test("user message with path reference renders a file chip", () => {
   const fileChips = html.match(/data-attachment-kind="file"/g) ?? [];
   assert.equal(fileChips.length, 1);
   assert.match(html, /data-attachment-degraded="true"/);
-  // The stored name is shown as the fallback when metadata is missing.
-  assert.match(html, />a1b2c3d4e5f6a7b8\.pdf</);
-  // A "missing metadata" hint helps the user understand the chip state.
+  // The random stored name is an implementation detail and must not be
+  // shown while metadata is still loading or unavailable.
+  assert.doesNotMatch(html, />a1b2c3d4e5f6a7b8\.pdf</);
+  assert.match(html, />PDF attachment</);
   assert.match(html, /missing metadata/);
 });
 
@@ -180,9 +181,10 @@ test("file chips degrade gracefully when sessionId is missing (no clickable targ
     cwd: CWD,
     // No sessionId provided — chip cannot resolve absolute path.
   });
-  // Chip still renders in degraded mode and shows the stored name.
+  // Chip still renders in degraded mode without exposing the random stored name.
   assert.match(html, /data-attachment-kind="file"/);
-  assert.match(html, />aaaaaaaaaaaaaaaa\.pdf</);
+  assert.doesNotMatch(html, />aaaaaaaaaaaaaaaa\.pdf</);
+  assert.match(html, />PDF attachment</);
   assert.match(html, /data-attachment-degraded="true"/);
 });
 
@@ -244,9 +246,10 @@ test("FileChip with resolved sidecar stays clickable (no missing-metadata hint)"
   assert.match(html, /2\.4 MB/);
 });
 
-test("FileChip with null meta (resolved as missing) shows the stored name fallback", () => {
+test("FileChip with null meta hides the random stored name fallback", () => {
   const html = renderFileChip({ meta: null });
-  assert.match(html, />ssssssssssssssss\.pdf</);
+  assert.doesNotMatch(html, />ssssssssssssssss\.pdf</);
+  assert.match(html, />PDF attachment</);
   assert.match(html, /data-attachment-degraded="true"/);
   assert.match(html, /missing metadata/);
 });

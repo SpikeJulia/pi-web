@@ -190,7 +190,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const [copied, setCopied] = useState(false);
   // Per-message sidecar map: chip key -> resolved metadata (or null when the
   // sidecar is missing). Updates as the async resolution completes; the
-  // initial render shows the stored-name fallback for every file chip.
+  // initial render uses a generic fallback until the original name arrives.
   const [sidecarMap, setSidecarMap] = useState<Record<string, SidecarMetadata | null>>({});
 
   const content =
@@ -1520,7 +1520,7 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
 /**
  * Compose the absolute path for a file chip. Returns null when the chip
  * cannot be opened (missing cwd or session id); the chip still renders
- * with a stored-name fallback in that case.
+ * with a generic fallback in that case.
  */
 function getChipAbsolutePath(
   cwd: string | undefined,

@@ -15,9 +15,8 @@
  * of the unit tests; the production default wraps `fetch()`.
  *
  * If the sidecar is missing (cleanup ran, or the message pre-dates the
- * attachment feature), the resolver degrades to `null` and the chip falls
- * back to showing the stored name. This is intentional — see the ticket's
- * "missing sidecar degrades to stored name" acceptance criterion.
+ * attachment feature), the resolver degrades to `null`. Random stored
+ * names are intentionally not exposed as the user-visible fallback.
  */
 
 import { encodeFilePathForApi } from "./file-paths";
@@ -62,6 +61,17 @@ export function getSidecarApiUrl(cwd: string, sessionId: string, storedName: str
  * silent schema drift on the four we depend on.
  */
 export function parseSidecarPayload(payload: unknown): SidecarMetadata | null {
+  if (payload && typeof payload === "object") {
+    const wrapper = payload as Record<string, unknown>;
+    if (typeof wrapper.content === "string") {
+      try {
+        return parseSidecarPayload(JSON.parse(wrapper.content));
+      } catch {
+        return null;
+      }
+    }
+  }
+
   if (!payload || typeof payload !== "object") return null;
   const candidate = payload as Record<string, unknown>;
   const { originalName, mimeType, size, uploadedAt } = candidate;
@@ -191,9 +201,11 @@ export function getStoredFileAbsolutePath(cwd: string, sessionId: string, stored
 }
 
 /**
- * Compose the human-friendly fallback label used when the sidecar is
- * missing. Pass-through today, but kept as a named export so call sites
- * stay explicit about *why* the chip is showing the stored name (i.e.
- * the sidecar is missing) rather than the original name.
+ * Compose the human-friendly fallback label used while the sidecar is
+ * loading or unavailable. The stored name is a random implementation
+ * detail, so never expose it as a filename in chat history.
  */
-export const getFallbackDisplayName = (storedName: string): string => storedName;
+export function getFallbackDisplayName(storedName: string): string {
+  const match = /\.([A-Za-z0-9]+)$/.exec(storedName);
+  return match ? `${match[1].toUpperCase()} attachment` : "Attachment";
+}
