@@ -26,7 +26,7 @@
 // pairing is the caller's responsibility (the upload pipeline is the
 // only producer of these two arrays in lockstep).
 
-import { isImageExtension } from "./file-upload-policy";
+import { isImageExtension } from "./file-types";
 import type { PendingAttachment } from "./pending-attachments";
 
 /**

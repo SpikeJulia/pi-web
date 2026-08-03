@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { extname, join } from "path";
+import { isImageExtension } from "./file-types";
 
 /**
  * Upload policy for `/api/file-upload`.
@@ -40,28 +41,6 @@ export const PI_UPLOADS_GITIGNORE_RULE = ".pi-uploads/";
  * sniffing is unreliable across platforms, so the extension is the source
  * of truth — see the ticket rationale.
  */
-const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "bmp",
-  "avif",
-]);
-
-/**
- * True when `fileName`'s extension routes to the image channel. The
- * extension is the authoritative channel signal (browser MIME sniffing is
- * unreliable across platforms), so this helper is also re-exported to the
- * client so its channel decision matches the server's without duplicating
- * the extension list in two places.
- */
-export function isImageExtension(fileName: string | undefined | null): boolean {
-  if (!fileName) return false;
-  return IMAGE_EXTENSIONS.has(getExtension(fileName));
-}
-
 /**
  * Extensions blocked at the upload entry point so it cannot be used to
  * drop native executables or Windows scripts into the project. The list
@@ -129,7 +108,7 @@ export function validateFilePolicy(
     };
   }
 
-  if (extension && IMAGE_EXTENSIONS.has(extension)) {
+  if (isImageExtension(originalName)) {
     if (bytesLength > MAX_IMAGE_BYTES) {
       return {
         ok: false,

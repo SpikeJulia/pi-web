@@ -6,7 +6,7 @@
 // list. It must stay DOM-only at the edges (preview URLs, file MIME checks)
 // but pure everywhere else so it can be tested without a browser.
 
-import { isImageExtension } from "./file-upload-policy";
+import { isImageExtension } from "./file-types";
 
 export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
