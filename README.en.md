@@ -1,37 +1,78 @@
-# Pi Studio
+<div align="center">
 
-[中文文档](./README.md)
+[中文](./README.md) · **English**
 
-**Pi Studio** is an enhanced fork of [Pi Web](https://github.com/agegr/pi-web) — a local web UI for the [pi coding agent](https://github.com/badlogic/pi-mono). It keeps everything Pi Web does — session browsing, real-time chat, model configuration, skill management, and project file preview — and adds a set of new productivity features on top.
+# 🎨 Pi Studio
 
-![Pi Web shows the same pi session with structured Markdown, tool calls, and project navigation beside the CLI](https://raw.githubusercontent.com/SpikeJulia/pi-studio/master/docs/screenshot2.png)
+#### A local web workbench for the pi coding agent — Pi Web, enhanced
 
-The same pi session in CLI and Pi Web: structured tool calls, readable Markdown, session browsing, and cleaner results.
+[![License](https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge)](./LICENSE)
+[![npm](https://img.shields.io/badge/npm-@spikejulia/pi--studio-CB3837?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/@spikejulia/pi-studio)
+[![Pi](https://img.shields.io/badge/Pi-Coding_Agent-2563EB?style=for-the-badge)](https://github.com/badlogic/pi-mono)
 
-## New in Pi Studio
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=white)
 
-Everything below is added on top of the original Pi Web.
+</div>
 
-- **Right-click context menu in Explorer**: open any file or folder in the right panel, or reveal it in your system file manager — right from the file tree.
-- **Folder tabs**: folders open as browsable tabs with breadcrumb navigation; click a file inside to open it as its own tab.
-- **URL preview in the panel**: http(s) links in chat open in a sandboxed in-panel preview instead of yanking you to a new tab.
-- **Smart embedding detection**: sites that refuse iframe embedding (GitHub, npmjs, ...) show a clear "open in browser" hint instead of a blank iframe; sites that allow it (Baidu, docs, blogs) preview directly.
-- **Chat links become first-class**: markdown links to local files, folders, and web URLs all route into the right panel.
-- **Attach and upload files**: drag files or images into the chat, upload them to the project, and let the agent read or reference them by path.
-- **Custom avatars**: set per-role chat avatars from your own images.
+A fork of [Pi Web](https://github.com/agegr/pi-web) that I've been running in my own projects — added a few genuinely time-saving features, then cleaned it up for open source.
 
-## Core Features
+Not a reskin: it connects the file tree, chat, and preview into one flow — **right-click to open, click a link to see it**.
 
-Inherited from Pi Web, still here:
+---
 
-- **Pick work back up**: browse previous pi conversations by project without digging through terminal history or session paths.
-- **Try different directions safely**: continue from an earlier message or fork a session into a separate route.
-- **Work across branches**: switch Git worktrees from the sidebar so new sessions and the Explorer follow the checkout you choose.
-- **Chat beside the project**: browse files on the left and preview source, docs, images, audio, and PDFs on the right while the agent works.
-- **See session state clearly**: context usage, cost, compaction state, and system prompt details are visible from the top bar.
-- **Configure less from the terminal**: manage models, login/API keys, model tests, and skill switches from the web UI.
+## 📋 Table of Contents
 
-## Quick Start
+| Name | One-liner |
+|---|---|
+| 🖱️ [**Right-click menu**](#-right-click-menu) | Open / reveal in system file manager, right from the tree |
+| 📁 [**Folder tabs**](#-folder-tabs) | Folders open as tabs with breadcrumb navigation |
+| 🔗 [**In-panel URL preview**](#-in-panel-url-preview) | Chat links preview in the side panel; refuse-embedding sites get a hint |
+| 📎 [**File uploads**](#-file-uploads) | Drag files/images into chat; the agent reads them by path |
+| 🧑‍🎨 [**Custom avatars**](#-custom-avatars) | Per-role avatars from your own images |
+
+---
+
+## ✨ New Features
+
+### 🖱️ Right-click menu
+
+> *"Stop ls-ing in the terminal to find files."*
+
+Right-click any file or folder in the Explorer:
+
+- **Open** — files open a preview tab, folders open a browse tab
+- **Show in system file manager** — reveal it in your OS file manager
+
+### 📁 Folder tabs
+
+> *"Opening a directory should feel as natural as opening a file."*
+
+- Folders open as their own tabs with breadcrumb navigation
+- Click a file → open its tab; click a subdirectory → navigate into it
+
+### 🔗 In-panel URL preview
+
+> *"A GitHub link shouldn't yank you to a new tab — embed when possible, say so when not."*
+
+- http(s) links in chat open in a sandboxed in-panel iframe
+- Automatically detects whether a site allows embedding (`X-Frame-Options` / `CSP frame-ancestors`)
+- Sites that refuse (GitHub, npmjs...) show a hint + "Open in browser" button; sites that allow it (Baidu, docs, blogs) preview directly
+- Ctrl/Cmd+click still opens a new browser tab
+
+### 📎 File uploads
+
+- Drag files/images into chat, uploaded to the project directory
+- The agent can read and reference them by path
+
+### 🧑‍🎨 Custom avatars
+
+- Set your own image avatars for user / assistant / tool roles
+
+---
+
+## 🚀 Quick Start
 
 **Run without installing:**
 
@@ -46,113 +87,51 @@ npm install -g @spikejulia/pi-studio
 pi-studio
 ```
 
-Then open [http://localhost:30141](http://localhost:30141). The CLI will try to open the browser automatically after the server is ready.
+Then open [http://localhost:30141](http://localhost:30141).
 
-**Options:**
+**Common options:**
 
 ```bash
 pi-studio --port 8080              # custom port
 pi-studio --hostname 127.0.0.1     # local access only
-pi-studio -p 8080 -H 127.0.0.1     # combine options
-pi-studio --no-open                # do not open the browser automatically
-
-PORT=8080 pi-studio                # environment variable is also supported
-PI_STUDIO_NO_OPEN=1 pi-studio         # useful when running as a background service
+pi-studio --no-open                # do not auto-open the browser
 ```
 
-## HTTP Proxy
+> Honors `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` env vars (server-side model/API requests).
 
-Pi Studio reads the standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables for server-side model and API requests.
+---
 
-On macOS or Linux:
+## 📦 Installation
+
+**From npm (recommended):**
 
 ```bash
-HTTP_PROXY=http://127.0.0.1:7890 \
-HTTPS_PROXY=http://127.0.0.1:7890 \
-NO_PROXY=localhost,127.0.0.1 \
-npx @spikejulia/pi-studio@latest
+npm install -g @spikejulia/pi-studio
 ```
 
-On Windows PowerShell:
-
-```powershell
-$env:HTTP_PROXY = "http://127.0.0.1:7890"
-$env:HTTPS_PROXY = "http://127.0.0.1:7890"
-$env:NO_PROXY = "localhost,127.0.0.1"
-npx @spikejulia/pi-studio@latest
-```
-
-## Notes
-
-- **Data directory**: Pi Studio reads `~/.pi/agent/sessions` by default. Set `PI_CODING_AGENT_DIR` to point at another pi agent directory.
-- **Session files**: files are stored as `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`.
-- **Model config**: the Models panel reads and writes `models.json` in the pi agent directory. Model lists and defaults come from pi's config.
-- **File access**: file browsing and preview are scoped to the selected project directory and working directories that appear in sessions.
-- **Git worktrees**: see [Worktrees in Pi Studio](./docs/worktrees.md) for when the switcher appears, how new worktrees are created, and what removal does.
-- **Forks vs in-session branches**: Fork creates a new `.jsonl` file. "Edit from here" creates another branch inside the same session file.
-
-## Development
+**From source:**
 
 ```bash
+git clone https://github.com/SpikeJulia/pi-studio.git
+cd pi-studio
 npm install
-npm run dev
+npm run dev        # dev mode (hot reload)
+npm run build && npm start   # production mode
 ```
 
-The local dev server runs at [http://localhost:30141](http://localhost:30141).
+---
 
-Common checks:
+## 💡 Core Capabilities (inherited from Pi Web)
 
-```bash
-node_modules/.bin/tsc --noEmit
-npm run lint
-```
+- **Session browsing**: revisit past pi conversations by project, no terminal archaeology
+- **Safe branching**: continue from any message or fork into an independent route
+- **Cross-branch work**: switch Git worktrees in the sidebar; Explorer follows the checkout
+- **File preview**: source, diff, images, audio, PDF, DOCX — all in the right panel
+- **Visible session state**: context usage, cost, compaction, system prompt at a glance
+- **Less context switching**: models, login/API keys, skill toggles all in the web UI
 
-Avoid running `next build` / `npm run build` during local development. It writes to `.next/` and can interfere with the dev server; leave builds for release work.
+---
 
-## Project Structure
+## 📄 License
 
-```text
-app/
-  api/
-    agent/          # creates/drives AgentSession and exposes SSE events
-    auth/           # OAuth and API key management
-    cwd/validate/   # custom working directory validation
-    default-cwd/    # pi default working directory lookup
-    files/          # file listing, reading, preview, and watching
-    home/           # current user home directory
-    models/         # available models, default model, thinking levels
-    models-config/  # read/write models.json and test models
-    sessions/       # session reads, rename, delete, context, HTML export
-    skills/         # skill listing, search, install, enable/disable
-    system/open/    # reveal a path in the system file manager
-    url/check/      # check whether a URL may be embedded in the preview iframe
-components/
-  AppShell.tsx        # main layout, URL state, top panels, file tabs
-  SessionSidebar.tsx  # project selector, session tree, Explorer
-  ChatWindow.tsx      # messages, SSE, image drag/drop, minimap
-  ChatInput.tsx       # input bar, model/tools/thinking/compact/slash controls
-  MessageView.tsx     # message, thinking, tool call/result rendering
-  ModelsConfig.tsx    # model and auth configuration panel
-  SkillsConfig.tsx    # skill management panel
-  FileExplorer.tsx    # file tree (with context menu)
-  FileViewer.tsx      # source, diff, image, audio, PDF, DOCX, folder, URL preview
-lib/
-  http-dispatcher.ts  # HTTP(S) proxy setup for server-side fetch
-  rpc-manager.ts      # AgentSessionWrapper lifecycle and global registry
-  session-reader.ts   # parses .jsonl session files and branch contexts
-  normalize.ts        # normalizes toolCall field names
-  file-access.ts      # file read safety boundary
-  file-links.ts       # markdown link resolution and URL classification
-  file-paths.ts       # path encoding and relative path helpers
-  url-embed.ts        # whether a site allows iframe embedding
-  markdown.ts         # Markdown/Mermaid/KaTeX plugin configuration
-  pi-types.ts         # pi-related types
-hooks/
-  useAgentSession.ts  # session loading, command sending, SSE state machine
-  useAudio.ts         # completion sound
-  useDragDrop.ts      # image drag/drop
-  useTheme.ts         # theme switching
-bin/
-  pi-studio.js           # npm CLI entrypoint
-instrumentation.ts    # initializes the server HTTP dispatcher
-```
+MIT © SpikeJulia
