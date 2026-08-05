@@ -9,13 +9,13 @@
 **无需安装，直接运行：**
 
 ```bash
-npx @agegr/pi-web@latest
+npx @spikejulia/pi-studio@latest
 ```
 
 **或全局安装后使用：**
 
 ```bash
-npm install -g @agegr/pi-web
+npm install -g @spikejulia/pi-studio
 pi-web
 ```
 
@@ -43,7 +43,7 @@ macOS 或 Linux：
 HTTP_PROXY=http://127.0.0.1:7890 \
 HTTPS_PROXY=http://127.0.0.1:7890 \
 NO_PROXY=localhost,127.0.0.1 \
-npx @agegr/pi-web@latest
+npx @spikejulia/pi-studio@latest
 ```
 
 Windows PowerShell：
@@ -52,7 +52,7 @@ Windows PowerShell：
 $env:HTTP_PROXY = "http://127.0.0.1:7890"
 $env:HTTPS_PROXY = "http://127.0.0.1:7890"
 $env:NO_PROXY = "localhost,127.0.0.1"
-npx @agegr/pi-web@latest
+npx @spikejulia/pi-studio@latest
 ```
 
 ## 功能介绍
