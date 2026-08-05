@@ -65,6 +65,10 @@ npx @agegr/pi-web@latest
 - **Try different directions safely**: continue from an earlier message or fork a session into a separate route.
 - **Work across branches**: switch Git worktrees from the sidebar so new sessions and the Explorer follow the checkout you choose.
 - **Chat beside the project**: browse files on the left and preview source, docs, images, audio, and PDFs on the right while the agent works.
+- **Open anything with a right click**: Explorer folders and files get a context menu — open in the right panel, or reveal in your system file manager.
+- **Folder and URL previews**: folders open as browsable tabs with breadcrumbs, and http(s) links in chat open in an in-panel web preview with an Open-in-browser fallback.
+- **Attach and upload files**: drag files or images into the chat, upload them to the project, and let the agent read or reference them by path.
+- **Custom avatars**: set per-role avatars for the chat from your own images.
 - **See session state clearly**: context usage, cost, compaction state, and system prompt details are visible from the top bar.
 - **Configure less from the terminal**: manage models, login/API keys, model tests, and skill switches from the web UI.
 
