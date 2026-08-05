@@ -853,6 +853,33 @@ function UrlViewer({ filePath, url }: Props) {
   } catch {
     safeTarget = null;
   }
+
+  // Whether the target allows iframe embedding. Browsers cannot detect an
+  // iframe refusal from the parent page, so we probe the target's response
+  // headers server-side and show a hint when it refuses.
+  const [embedState, setEmbedState] = useState<"checking" | "embeddable" | "denied">("checking");
+
+  useEffect(() => {
+    if (!safeTarget) {
+      setEmbedState("embeddable");
+      return;
+    }
+    let cancelled = false;
+    setEmbedState("checking");
+    const params = new URLSearchParams({ url: safeTarget });
+    fetch(`/api/url/check?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data: { embeddable?: boolean }) => {
+        if (cancelled) return;
+        setEmbedState(data.embeddable === false ? "denied" : "embeddable");
+      })
+      .catch(() => {
+        // Probe failed (timeout / network): stay optimistic and try the iframe.
+        if (!cancelled) setEmbedState("embeddable");
+      });
+    return () => { cancelled = true; };
+  }, [safeTarget]);
+
   if (!safeTarget) {
     return (
       <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13, padding: 24, textAlign: "center", overflowWrap: "anywhere" }}>
@@ -893,14 +920,42 @@ function UrlViewer({ filePath, url }: Props) {
           </svg>
         </a>
       </div>
-      <iframe
-        key={safeTarget}
-        src={safeTarget}
-        sandbox="allow-scripts allow-forms allow-popups"
-        title={`Preview ${safeTarget}`}
-        referrerPolicy="no-referrer"
-        style={{ flex: 1, width: "100%", border: "none", background: "var(--bg)" }}
-      />
+      {embedState === "checking" ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
+          Checking if this site allows preview...
+        </div>
+      ) : embedState === "denied" ? (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: 24,
+            color: "var(--text-muted)",
+            fontSize: 13,
+            textAlign: "center",
+          }}
+        >
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="3" y1="9" x2="21" y2="9" />
+            <line x1="9" y1="21" x2="9" y2="9" />
+          </svg>
+          <div>该网站不允许内嵌预览，点击右上角在浏览器中打开</div>
+        </div>
+      ) : (
+        <iframe
+          key={safeTarget}
+          src={safeTarget}
+          sandbox="allow-scripts allow-forms allow-popups"
+          title={`Preview ${safeTarget}`}
+          referrerPolicy="no-referrer"
+          style={{ flex: 1, width: "100%", border: "none", background: "var(--bg)" }}
+        />
+      )}
     </div>
   );
 }
