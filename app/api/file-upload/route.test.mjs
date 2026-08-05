@@ -26,7 +26,7 @@ function resetAllowedRoots() {
 }
 
 function createProject(t) {
-  const cwd = mkdtempSync(join(tmpdir(), "pi-web-file-upload-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-studio-file-upload-"));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   return cwd;
 }

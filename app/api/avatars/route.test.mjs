@@ -15,7 +15,7 @@ const { getAvatarConfigPath, readAvatarConfig } = await jiti.import(
 );
 
 function createProject(t) {
-  const cwd = mkdtempSync(join(tmpdir(), "pi-web-avatar-route-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-studio-avatar-route-"));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   return cwd;
 }

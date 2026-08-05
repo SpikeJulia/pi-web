@@ -43,7 +43,7 @@ npx @spikejulia/pi-studio@latest
 
 ```bash
 npm install -g @spikejulia/pi-studio
-pi-web
+pi-studio
 ```
 
 启动后打开 [http://localhost:30141](http://localhost:30141)。命令行版本会在服务就绪后尝试自动打开浏览器。
@@ -51,13 +51,13 @@ pi-web
 **可选参数：**
 
 ```bash
-pi-web --port 8080              # 自定义端口
-pi-web --hostname 127.0.0.1     # 仅本机访问
-pi-web -p 8080 -H 127.0.0.1     # 组合使用
-pi-web --no-open                # 不自动打开浏览器
+pi-studio --port 8080              # 自定义端口
+pi-studio --hostname 127.0.0.1     # 仅本机访问
+pi-studio -p 8080 -H 127.0.0.1     # 组合使用
+pi-studio --no-open                # 不自动打开浏览器
 
-PORT=8080 pi-web                # 也支持环境变量
-PI_WEB_NO_OPEN=1 pi-web         # 适用于后台服务或开机自启
+PORT=8080 pi-studio                # 也支持环境变量
+PI_STUDIO_NO_OPEN=1 pi-studio         # 适用于后台服务或开机自启
 ```
 
 ## HTTP 代理
@@ -153,6 +153,6 @@ hooks/
   useDragDrop.ts      # 图片拖拽
   useTheme.ts         # 主题切换
 bin/
-  pi-web.js           # npm CLI 入口
+  pi-studio.js           # npm CLI 入口
 instrumentation.ts    # 初始化服务端 HTTP dispatcher
 ```

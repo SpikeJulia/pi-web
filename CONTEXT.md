@@ -1,6 +1,6 @@
-# Pi Web — Context
+# Pi Studio — Context
 
-Pi Web is a local web workspace for the pi coding agent: it reads pi session files, drives agent sessions over RPC, and provides project browsing, model config, skill management, and chat.
+Pi Studio is a local web workspace for the pi coding agent (enhanced fork of Pi Web): it reads pi session files, drives agent sessions over RPC, and provides project browsing, model config, skill management, and chat.
 
 ## Language
 

@@ -12,7 +12,7 @@
   },
   "license": "MIT",
   "bin": {
-    "pi-web": "bin/pi-web.js"
+    "pi-studio": "bin/pi-studio.js"
   },
   "files": [
     "bin",

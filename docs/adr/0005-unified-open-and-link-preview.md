@@ -1,6 +1,6 @@
 # Unified open entry: folder browser, right-click menu, and in-panel link previews
 
-Pi Web's file model today is strictly "open a file in a right-panel tab". Folders
+Pi Studio's file model today is strictly "open a file in a right-panel tab". Folders
 only expand in the Explorer tree, URLs in chat open in a new browser tab, and the
 Explorer has no context menu. We are extending the open model so folders and URLs
 are first-class previewable objects, and so every "open" gesture funnels through

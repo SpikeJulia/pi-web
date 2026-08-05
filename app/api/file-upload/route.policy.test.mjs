@@ -27,7 +27,7 @@ function resetAllowedRoots() {
 }
 
 function createProject(t) {
-  const cwd = mkdtempSync(join(tmpdir(), "pi-web-file-upload-policy-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-studio-file-upload-policy-"));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   return cwd;
 }
@@ -342,7 +342,7 @@ test("POST responds 500 and writes nothing when the upload directory is read-onl
 // --- rollback helper unit tests ---
 
 test("__rollbackWrittenFiles removes every stored file and its sidecar", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "pi-web-rollback-"));
+  const dir = mkdtempSync(join(tmpdir(), "pi-studio-rollback-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
 
   const storedPath = join(dir, "aabbccdd.bin");
@@ -356,7 +356,7 @@ test("__rollbackWrittenFiles removes every stored file and its sidecar", async (
 });
 
 test("__rollbackWrittenFiles tolerates a missing sidecar", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "pi-web-rollback-"));
+  const dir = mkdtempSync(join(tmpdir(), "pi-studio-rollback-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
 
   const storedPath = join(dir, "aabbccdd.bin");
@@ -369,7 +369,7 @@ test("__rollbackWrittenFiles tolerates a missing sidecar", async (t) => {
 });
 
 test("__rollbackWrittenFiles swallows per-path errors and keeps going", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "pi-web-rollback-"));
+  const dir = mkdtempSync(join(tmpdir(), "pi-studio-rollback-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
 
   const keptPath = join(dir, "kept.bin");

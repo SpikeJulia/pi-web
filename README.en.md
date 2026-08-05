@@ -43,7 +43,7 @@ npx @spikejulia/pi-studio@latest
 
 ```bash
 npm install -g @spikejulia/pi-studio
-pi-web
+pi-studio
 ```
 
 Then open [http://localhost:30141](http://localhost:30141). The CLI will try to open the browser automatically after the server is ready.
@@ -51,13 +51,13 @@ Then open [http://localhost:30141](http://localhost:30141). The CLI will try to 
 **Options:**
 
 ```bash
-pi-web --port 8080              # custom port
-pi-web --hostname 127.0.0.1     # local access only
-pi-web -p 8080 -H 127.0.0.1     # combine options
-pi-web --no-open                # do not open the browser automatically
+pi-studio --port 8080              # custom port
+pi-studio --hostname 127.0.0.1     # local access only
+pi-studio -p 8080 -H 127.0.0.1     # combine options
+pi-studio --no-open                # do not open the browser automatically
 
-PORT=8080 pi-web                # environment variable is also supported
-PI_WEB_NO_OPEN=1 pi-web         # useful when running as a background service
+PORT=8080 pi-studio                # environment variable is also supported
+PI_STUDIO_NO_OPEN=1 pi-studio         # useful when running as a background service
 ```
 
 ## HTTP Proxy
@@ -153,6 +153,6 @@ hooks/
   useDragDrop.ts      # image drag/drop
   useTheme.ts         # theme switching
 bin/
-  pi-web.js           # npm CLI entrypoint
+  pi-studio.js           # npm CLI entrypoint
 instrumentation.ts    # initializes the server HTTP dispatcher
 ```

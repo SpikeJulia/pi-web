@@ -25,7 +25,7 @@ function resetAllowedRoots() {
 }
 
 function createProject(t) {
-  const cwd = mkdtempSync(join(tmpdir(), "pi-web-attachments-cleanup-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-studio-attachments-cleanup-"));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   return cwd;
 }
