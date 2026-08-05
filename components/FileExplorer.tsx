@@ -30,6 +30,8 @@ interface FileNode {
 interface Props {
   cwd: string;
   onOpenFile: (filePath: string, fileName: string) => void;
+  onOpenPath?: (filePath: string) => void;
+  onOpenInSystem?: (filePath: string) => void;
   refreshKey?: number;
   onAtMention?: (relativePath: string, isDir: boolean) => void;
   onAtMentions?: (relativePaths: string[]) => void;
@@ -181,11 +183,19 @@ function DismissButton({ onClick, title }: { onClick: () => void; title: string 
   );
 }
 
+interface ContextMenuState {
+  node: FileNode;
+  x: number;
+  y: number;
+}
+
 function TreeNode({
   node,
   depth,
   cwd,
   onOpenFile,
+  onOpenPath,
+  onOpenInSystem,
   onAtMention,
   expandedPaths,
   onToggleExpanded,
@@ -193,11 +203,14 @@ function TreeNode({
   highlightedPaths,
   gitStatusByPath,
   changedDirectoryPaths,
+  onContextMenu,
 }: {
   node: FileNode;
   depth: number;
   cwd: string;
   onOpenFile: (filePath: string, fileName: string) => void;
+  onOpenPath?: (filePath: string) => void;
+  onOpenInSystem?: (filePath: string) => void;
   onAtMention?: (relativePath: string, isDir: boolean) => void;
   expandedPaths: Set<string>;
   onToggleExpanded: (fullPath: string, open: boolean) => void;
@@ -205,6 +218,7 @@ function TreeNode({
   highlightedPaths: Set<string>;
   gitStatusByPath: Map<string, GitFileStatus>;
   changedDirectoryPaths: Set<string>;
+  onContextMenu?: (event: React.MouseEvent, node: FileNode) => void;
 }) {
   const open = expandedPaths.has(node.fullPath);
   const highlighted = highlightedPaths.has(node.fullPath);
@@ -254,6 +268,7 @@ function TreeNode({
     <div>
       <div
         onClick={handleClick}
+        onContextMenu={onContextMenu ? (e) => onContextMenu(e, node) : undefined}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
@@ -415,6 +430,8 @@ function TreeNode({
               depth={depth + 1}
               cwd={cwd}
               onOpenFile={onOpenFile}
+              onOpenPath={onOpenPath}
+              onOpenInSystem={onOpenInSystem}
               onAtMention={onAtMention}
               expandedPaths={expandedPaths}
               onToggleExpanded={onToggleExpanded}
@@ -422,6 +439,7 @@ function TreeNode({
               highlightedPaths={highlightedPaths}
               gitStatusByPath={gitStatusByPath}
               changedDirectoryPaths={changedDirectoryPaths}
+              onContextMenu={onContextMenu}
             />
           ))}
           {children.length === 0 && loaded && (
@@ -438,6 +456,8 @@ function TreeNode({
 export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileExplorer({
   cwd,
   onOpenFile,
+  onOpenPath,
+  onOpenInSystem,
   refreshKey,
   onAtMention,
   onAtMentions,
@@ -455,6 +475,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [pendingConflict, setPendingConflict] = useState<PendingConflict | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const prevCwdRef = useRef<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const refreshToken = `${refreshKey ?? 0}:${treeRefreshKey}`;
@@ -622,6 +643,28 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     return () => { cancelled = true; };
   }, [cwd, refreshKey, treeRefreshKey]);
 
+  const handleContextMenu = useCallback((event: React.MouseEvent, node: FileNode) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ node, x: event.clientX, y: event.clientY });
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    window.addEventListener("click", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("contextmenu", close, { capture: true });
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("contextmenu", close, { capture: true });
+    };
+  }, [contextMenu]);
+
   const showUploadFeedback = uploadBusy || pendingConflict !== null || uploadError !== null || uploadSummary !== null;
 
   const addUploadedFilesToChat = useCallback(() => {
@@ -765,6 +808,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
               depth={0}
               cwd={cwd}
               onOpenFile={onOpenFile}
+              onOpenPath={onOpenPath}
+              onOpenInSystem={onOpenInSystem}
               onAtMention={onAtMention}
               expandedPaths={expandedPaths}
               onToggleExpanded={handleToggleExpanded}
@@ -772,6 +817,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
               highlightedPaths={highlightedPaths}
               gitStatusByPath={gitStatusByPath}
               changedDirectoryPaths={changedDirectoryPaths}
+              onContextMenu={handleContextMenu}
             />
           ))
         )}
@@ -781,6 +827,70 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           </div>
         )}
       </div>
+      {contextMenu && (
+        <div
+          style={{
+            position: "fixed",
+            left: Math.min(contextMenu.x, window.innerWidth - 220),
+            top: Math.min(contextMenu.y, window.innerHeight - 120),
+            zIndex: 1000,
+            minWidth: 200,
+            padding: "4px",
+            background: "var(--bg-panel)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+          role="menu"
+        >
+          <div style={{ padding: "2px 8px 4px", fontSize: 10, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={contextMenu.node.fullPath}>
+            {contextMenu.node.name}
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const { node } = contextMenu;
+              setContextMenu(null);
+              if (node.isDir && onOpenPath) {
+                onOpenPath(node.fullPath);
+              } else {
+                onOpenFile(node.fullPath, node.name);
+              }
+            }}
+            style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "5px 8px", border: "none", borderRadius: 4, background: "none", cursor: "pointer", fontSize: 12, color: "var(--text)", textAlign: "left" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-selected)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {contextMenu.node.isDir ? <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /> : <path d="M3 6h7l2 2h9v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6Z" />}
+            </svg>
+            {contextMenu.node.isDir ? "Open folder" : "Open"}
+          </button>
+          {onOpenInSystem && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const { node } = contextMenu;
+                setContextMenu(null);
+                onOpenInSystem(node.fullPath);
+              }}
+              style={{ display: "flex", alignItems: "center", gap: 7, width: "100%", padding: "5px 8px", border: "none", borderRadius: 4, background: "none", cursor: "pointer", fontSize: 12, color: "var(--text)", textAlign: "left" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-selected)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M3 9h18" />
+                <path d="M9 21V9" />
+              </svg>
+              Show in system file manager
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 });

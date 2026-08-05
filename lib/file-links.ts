@@ -117,3 +117,34 @@ export function resolveLocalFileHref(
   if (candidateKind === "relative" && relativeRoot && !isPathInside(filePath, relativeRoot)) return null;
   return filePath;
 }
+
+/**
+ * True when the href is a web URL suitable for in-panel iframe preview
+ * (http or https only). Other schemes (mailto, ftp, data, javascript, ...)
+ * stay ordinary links — only http(s) can be meaningfully embedded.
+ */
+export function isExternalUrl(href: string | undefined | null): boolean {
+  if (!href) return false;
+  const trimmed = href.trim();
+  if (!trimmed) return false;
+  return /^https?:\/\//i.test(trimmed);
+}
+
+/**
+ * Normalize an external URL for tab identity: lowercase scheme + host,
+ * strip a trailing slash, strip the fragment. Query is kept so distinct
+ * queries open distinct tabs. Invalid input is returned unchanged.
+ */
+export function normalizePreviewUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    parsed.protocol = parsed.protocol.toLowerCase();
+    parsed.hostname = parsed.hostname.toLowerCase();
+    let normalized = parsed.toString();
+    if (normalized.endsWith("/")) normalized = normalized.slice(0, -1);
+    return normalized;
+  } catch {
+    return url;
+  }
+}

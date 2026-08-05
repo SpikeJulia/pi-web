@@ -7,7 +7,7 @@ import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
 import { copyText } from "@/lib/clipboard";
-import { resolveLocalFileHref } from "@/lib/file-links";
+import { resolveLocalFileHref, isExternalUrl } from "@/lib/file-links";
 import { markdownRehypePlugins, markdownRemarkPlugins } from "@/lib/markdown";
 
 interface MarkdownBodyProps {
@@ -16,9 +16,11 @@ interface MarkdownBodyProps {
   isStreaming?: boolean;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
+  onOpenPath?: (filePath: string) => void;
+  onOpenUrl?: (url: string) => void;
 }
 
-export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
+export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile, onOpenPath, onOpenUrl }: MarkdownBodyProps) {
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
 
   return (
@@ -52,9 +54,12 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
           a({ href, children, ...props }) {
             // `node` is react-markdown metadata, not a DOM attribute.
             delete props.node;
-            const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
+            const filePath = (onOpenFile || onOpenPath) ? resolveLocalFileHref(href, cwd) : null;
             const openFile = onOpenFile;
-            if (!filePath || !openFile) {
+            const openPath = onOpenPath;
+            const openUrl = onOpenUrl;
+            const externalUrl = (!filePath && openUrl && href && isExternalUrl(href)) ? href : null;
+            if ((!filePath && !externalUrl) || (!openFile && !openPath && !openUrl)) {
               return (
                 <a href={href} {...props} target="_blank" rel="noopener noreferrer">
                   {children}
@@ -68,7 +73,12 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
               const target = event.currentTarget.getAttribute("target");
               if (target && target !== "_self") return;
               event.preventDefault();
-              openFile(filePath);
+              if (filePath) {
+                if (openPath) openPath(filePath);
+                else openFile?.(filePath);
+              } else if (externalUrl && openUrl) {
+                openUrl(externalUrl);
+              }
             };
 
             return (

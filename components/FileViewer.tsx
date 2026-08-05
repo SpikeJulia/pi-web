@@ -17,17 +17,22 @@ import {
   isDocumentPreviewPath,
   isImagePath,
 } from "@/lib/file-types";
-import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
-import { resolveLocalFileHref } from "@/lib/file-links";
+import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
+import { resolveLocalFileHref, isExternalUrl } from "@/lib/file-links";
+import { getFileIcon, FolderIcon } from "./FileIcons";
 import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins } from "@/lib/markdown";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 
 interface Props {
   filePath: string;
+  kind?: "file" | "folder" | "url";
+  url?: string;
   cwd?: string;
   sourceSessionId?: string | null;
   onOpenFile?: (filePath: string) => void;
+  onOpenPath?: (filePath: string) => void;
+  onOpenUrl?: (url: string) => void;
   gitRefreshKey?: number;
 }
 
@@ -701,7 +706,212 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
   );
 }
 
-export function FileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefreshKey }: Props) {
+function FolderViewer({ filePath, onOpenFile }: { filePath: string; onOpenFile?: (filePath: string) => void }) {
+  const [currentPath, setCurrentPath] = useState(filePath);
+  const [entries, setEntries] = useState<Array<{ name: string; isDir: boolean; size: number; modified: string }> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setEntries(null);
+    const encoded = encodeFilePathForApi(currentPath);
+    fetch(`/api/files/${encoded}?type=list`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data: { entries?: Array<{ name: string; isDir: boolean; size: number; modified: string }>; error?: string }) => {
+        if (cancelled) return;
+        if (data.error) {
+          setError(data.error);
+          return;
+        }
+        setEntries(data.entries ?? []);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [currentPath]);
+
+  const handleEntryClick = (entry: { name: string; isDir: boolean }) => {
+    if (entry.isDir) {
+      setCurrentPath(joinFilePath(currentPath, entry.name));
+    } else {
+      onOpenFile?.(joinFilePath(currentPath, entry.name));
+    }
+  };
+
+  const crumbs = normalizeFilePathSlashes(currentPath).split("/").filter(Boolean);
+
+  // Rebuild a path from the crumb prefix. The first crumb may be a Windows
+  // drive (`D:`) — `split("/")` on `D:/foo` yields [`D:`, `foo`], and joining
+  // back with `/` produces the correct `D:/foo` prefix.
+  const pathFromCrumbs = (count: number) => {
+    const prefix = crumbs.slice(0, count).join("/");
+    // Absolute POSIX paths (`/home/me`) must keep the leading slash.
+    return currentPath.startsWith("/") && !/^[a-zA-Z]:\//.test(currentPath) ? `/${prefix}` : prefix;
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "4px 12px",
+          borderBottom: "1px solid var(--border)",
+          fontSize: 11,
+          color: "var(--text-dim)",
+          background: "var(--bg)",
+          flexShrink: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setCurrentPath(getFileDirectory(currentPath) || currentPath)}
+          title="Go to parent folder"
+          aria-label="Go to parent folder"
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, padding: 0, border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg-panel)", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0 }}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" }} title={currentPath}>
+          {crumbs.map((part, i) => (
+            <span key={`${part}-${i}`} style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0 }}>
+              {i > 0 && <span style={{ color: "var(--text-dim)", opacity: 0.7 }}>/</span>}
+              <button
+                type="button"
+                onClick={() => setCurrentPath(pathFromCrumbs(i + 1))}
+                style={{ border: "none", background: "none", padding: "1px 3px", color: i === crumbs.length - 1 ? "var(--text)" : "var(--text-muted)", cursor: i === crumbs.length - 1 ? "default" : "pointer", font: "inherit", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" }}
+              >
+                {part}
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex: 1, overflow: "auto", padding: "4px 6px" }}>
+        {loading ? (
+          <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-dim)" }}>Loading folder...</div>
+        ) : error ? (
+          <div style={{ padding: "10px 12px", fontSize: 12, color: "#f87171" }}>{error}</div>
+        ) : (entries ?? []).length === 0 ? (
+          <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-dim)" }}>Empty folder</div>
+        ) : (
+          (entries ?? []).map((entry) => (
+            <button
+              key={entry.name}
+              type="button"
+              onClick={() => handleEntryClick(entry)}
+              title={entry.isDir ? entry.name : joinFilePath(currentPath, entry.name)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                width: "100%",
+                padding: "3px 8px",
+                border: "none",
+                borderRadius: 4,
+                background: "none",
+                cursor: "pointer",
+                textAlign: "left",
+                font: "inherit",
+                fontSize: 12,
+                color: "var(--text)",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+            >
+              <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+                {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(entry.name, 14)}
+              </span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UrlViewer({ filePath, url }: Props) {
+  const target = url ?? filePath;
+  // Defense in depth: only ever embed http(s) URLs in the sandboxed iframe.
+  // The markdown sanitizer already filters schemes, but non-markdown callers
+  // of onOpenUrl must not be able to smuggle javascript:/data:/etc. into src.
+  let safeTarget: string | null = null;
+  try {
+    const parsed = new URL(target);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") safeTarget = target;
+  } catch {
+    safeTarget = null;
+  }
+  if (!safeTarget) {
+    return (
+      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13, padding: 24, textAlign: "center", overflowWrap: "anywhere" }}>
+        Cannot preview this URL in the panel.
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "4px 12px",
+          borderBottom: "1px solid var(--border)",
+          fontSize: 11,
+          color: "var(--text-dim)",
+          background: "var(--bg)",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }} title={safeTarget}>
+          {safeTarget}
+        </span>
+        <a
+          href={safeTarget}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open in browser"
+          aria-label="Open in browser"
+          className="file-viewer-icon-button"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <path d="M15 3h6v6" />
+            <path d="M10 14 21 3" />
+          </svg>
+        </a>
+      </div>
+      <iframe
+        key={safeTarget}
+        src={safeTarget}
+        sandbox="allow-scripts allow-forms allow-popups"
+        title={`Preview ${safeTarget}`}
+        referrerPolicy="no-referrer"
+        style={{ flex: 1, width: "100%", border: "none", background: "var(--bg)" }}
+      />
+    </div>
+  );
+}
+
+export function FileViewer({ filePath, kind, url, cwd, sourceSessionId, onOpenFile, onOpenPath, onOpenUrl, gitRefreshKey }: Props) {
+  if (kind === "folder") {
+    return <FolderViewer filePath={filePath} onOpenFile={onOpenFile} />;
+  }
+  if (kind === "url") {
+    return <UrlViewer filePath={filePath} url={url} />;
+  }
   if (isImagePath(filePath)) {
     return <ImageViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} />;
   }
@@ -711,10 +921,10 @@ export function FileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefr
   if (isDocumentPreviewPath(filePath)) {
     return <DocumentViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} />;
   }
-  return <TextFileViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} onOpenFile={onOpenFile} gitRefreshKey={gitRefreshKey} />;
+  return <TextFileViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} onOpenFile={onOpenFile} onOpenPath={onOpenPath} onOpenUrl={onOpenUrl} gitRefreshKey={gitRefreshKey} />;
 }
 
-function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefreshKey }: Props) {
+function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, onOpenPath, onOpenUrl, gitRefreshKey }: Props) {
   const { isDark } = useTheme();
   const [data, setData] = useState<FileData | null>(null);
   const [gitDiff, setGitDiff] = useState<GitFileDiffResponse | null>(null);
@@ -954,10 +1164,11 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefresh
               components={{
                 a({ href, children, ...props }) {
                   delete props.node;
-                  const linkedFile = onOpenFile
+                  const linkedFile = (onOpenFile || onOpenPath)
                     ? resolveLocalFileHref(href, markdownDirectory, cwd ?? markdownDirectory)
                     : null;
-                  if (!linkedFile || !onOpenFile) {
+                  const externalUrl = (!linkedFile && onOpenUrl && href && isExternalUrl(href)) ? href : null;
+                  if ((!linkedFile && !externalUrl) || (!onOpenFile && !onOpenPath && !onOpenUrl)) {
                     return <a href={href} {...props}>{children}</a>;
                   }
 
@@ -965,7 +1176,12 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefresh
                     if (event.defaultPrevented || event.button !== 0) return;
                     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                     event.preventDefault();
-                    onOpenFile(linkedFile);
+                    if (linkedFile && (onOpenFile || onOpenPath)) {
+                      if (onOpenPath) onOpenPath(linkedFile);
+                      else onOpenFile?.(linkedFile);
+                    } else if (externalUrl && onOpenUrl) {
+                      onOpenUrl(externalUrl);
+                    }
                   };
 
                   return <a href={href} {...props} onClick={handleClick}>{children}</a>;

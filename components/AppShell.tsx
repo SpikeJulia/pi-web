@@ -17,7 +17,8 @@ import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
-import { getFileName } from "@/lib/file-paths";
+import { getFileName, encodeFilePathForApi } from "@/lib/file-paths";
+import { normalizePreviewUrl } from "@/lib/file-links";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
@@ -395,6 +396,72 @@ export function AppShell() {
     handleOpenFile(filePath, getFileName(filePath), selectedSession?.id ?? null);
   }, [handleOpenFile, selectedSession?.id]);
 
+  const handleOpenFolder = useCallback((folderPath: string, folderName: string, sourceSessionId?: string | null) => {
+    const tabId = `folder:${folderPath}`;
+    setFileTabs((prev) => {
+      const existing = prev.find((t) => t.id === tabId);
+      if (!existing) return [...prev, { id: tabId, label: folderName, filePath: folderPath, kind: "folder", sourceSessionId }];
+      if (!sourceSessionId || existing.sourceSessionId === sourceSessionId) return prev;
+      return prev.map((t) => t.id === tabId ? { ...t, sourceSessionId } : t);
+    });
+    setActiveFileTabId(tabId);
+    setRightPanelOpen(true);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+
+  const handleOpenUrl = useCallback((rawUrl: string) => {
+    const url = normalizePreviewUrl(rawUrl);
+    let label = url;
+    try {
+      label = new URL(url).hostname || url;
+    } catch {
+      // fall back to the raw normalized url
+    }
+    const tabId = `url:${url}`;
+    setFileTabs((prev) => {
+      if (prev.some((t) => t.id === tabId)) return prev;
+      return [...prev, { id: tabId, label, filePath: url, kind: "url", url }];
+    });
+    setActiveFileTabId(tabId);
+    setRightPanelOpen(true);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile]);
+
+  // Unified open for chat links / explorer context-menu items: ask the server
+  // whether the path is a file or a folder, then open the matching tab kind.
+  const handleOpenPath = useCallback((filePath: string, sourceSessionId?: string | null) => {
+    const encoded = encodeFilePathForApi(filePath);
+    fetch(`/api/files/${encoded}?type=meta${sourceSessionId ? `&sessionId=${encodeURIComponent(sourceSessionId)}` : ""}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { isDir?: boolean } | null) => {
+        const name = getFileName(filePath);
+        if (data?.isDir) {
+          handleOpenFolder(filePath, name, sourceSessionId);
+        } else {
+          handleOpenFile(filePath, name, sourceSessionId);
+        }
+      })
+      .catch(() => {
+        handleOpenFile(filePath, getFileName(filePath), sourceSessionId);
+      });
+  }, [handleOpenFile, handleOpenFolder]);
+
+  // Chat link handler: local paths go through handleOpenPath (server decides
+  // file vs folder), URLs go to the in-panel previewer.
+  const handleOpenLinkedPath = useCallback((filePath: string) => {
+    handleOpenPath(filePath, selectedSession?.id ?? null);
+  }, [handleOpenPath, selectedSession?.id]);
+
+  const handleOpenInSystem = useCallback((filePath: string) => {
+    void fetch("/api/system/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: filePath }),
+    }).catch(() => {
+      // Best-effort; the OS file manager may not be available.
+    });
+  }, []);
+
   const handleCloseFileTab = useCallback((tabId: string) => {
     setFileTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId);
@@ -455,6 +522,8 @@ export function AppShell() {
         selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
         onOpenFile={handleOpenFile}
+        onOpenPath={handleOpenPath}
+        onOpenInSystem={handleOpenInSystem}
         explorerRefreshKey={explorerRefreshKey}
         onExplorerRefresh={handleExplorerRefresh}
         onAtMention={handleAtMention}
@@ -1194,6 +1263,8 @@ export function AppShell() {
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
+              onOpenPath={handleOpenLinkedPath}
+              onOpenUrl={handleOpenUrl}
             />
           ) : initialCwdStatus === "validating" ? (
             <div
@@ -1264,9 +1335,12 @@ export function AppShell() {
 
         {/* File content */}
         <div style={{ flex: 1, overflow: "hidden" }}>
-          {activeFileTab?.filePath ? (
+          {activeFileTab ? (
             <FileViewer
+              key={activeFileTab.id}
               filePath={activeFileTab.filePath}
+              kind={activeFileTab.kind}
+              url={activeFileTab.url}
               cwd={activeCwd ?? undefined}
               sourceSessionId={activeFileTab.sourceSessionId}
               gitRefreshKey={explorerRefreshKey}
@@ -1275,6 +1349,11 @@ export function AppShell() {
                 getFileName(filePath),
                 activeFileTab.sourceSessionId,
               )}
+              onOpenPath={(filePath) => handleOpenPath(
+                filePath,
+                activeFileTab.sourceSessionId,
+              )}
+              onOpenUrl={handleOpenUrl}
             />
           ) : (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
